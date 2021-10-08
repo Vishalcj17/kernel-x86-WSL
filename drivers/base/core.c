@@ -95,10 +95,27 @@ int fwnode_link_add(struct fwnode_handle *con, struct fwnode_handle *sup)
 
 	list_add(&link->s_hook, &sup->consumers);
 	list_add(&link->c_hook, &con->suppliers);
+	pr_debug("%pfwP Linked as a fwnode consumer to %pfwP\n",
+		 con, sup);
 out:
 	mutex_unlock(&fwnode_link_lock);
 
 	return ret;
+}
+
+/**
+ * __fwnode_link_del - Delete a link between two fwnode_handles.
+ * @link: the fwnode_link to be deleted
+ *
+ * The fwnode_link_lock needs to be held when this function is called.
+ */
+static void __fwnode_link_del(struct fwnode_link *link)
+{
+	pr_debug("%pfwP Dropping the fwnode link to %pfwP\n",
+		 link->consumer, link->supplier);
+	list_del(&link->s_hook);
+	list_del(&link->c_hook);
+	kfree(link);
 }
 
 /**
@@ -112,11 +129,8 @@ static void fwnode_links_purge_suppliers(struct fwnode_handle *fwnode)
 	struct fwnode_link *link, *tmp;
 
 	mutex_lock(&fwnode_link_lock);
-	list_for_each_entry_safe(link, tmp, &fwnode->suppliers, c_hook) {
-		list_del(&link->s_hook);
-		list_del(&link->c_hook);
-		kfree(link);
-	}
+	list_for_each_entry_safe(link, tmp, &fwnode->suppliers, c_hook)
+		__fwnode_link_del(link);
 	mutex_unlock(&fwnode_link_lock);
 }
 
@@ -131,11 +145,8 @@ static void fwnode_links_purge_consumers(struct fwnode_handle *fwnode)
 	struct fwnode_link *link, *tmp;
 
 	mutex_lock(&fwnode_link_lock);
-	list_for_each_entry_safe(link, tmp, &fwnode->consumers, s_hook) {
-		list_del(&link->s_hook);
-		list_del(&link->c_hook);
-		kfree(link);
-	}
+	list_for_each_entry_safe(link, tmp, &fwnode->consumers, s_hook)
+		__fwnode_link_del(link);
 	mutex_unlock(&fwnode_link_lock);
 }
 
@@ -975,6 +986,7 @@ int device_links_check_suppliers(struct device *dev)
 {
 	struct device_link *link;
 	int ret = 0;
+	struct fwnode_handle *sup_fw;
 
 	/*
 	 * Device waiting for supplier to become available is not allowed to
@@ -983,10 +995,11 @@ int device_links_check_suppliers(struct device *dev)
 	mutex_lock(&fwnode_link_lock);
 	if (dev->fwnode && !list_empty(&dev->fwnode->suppliers) &&
 	    !fw_devlink_is_permissive()) {
-		dev_dbg(dev, "probe deferral - wait for supplier %pfwP\n",
-			list_first_entry(&dev->fwnode->suppliers,
-			struct fwnode_link,
-			c_hook)->supplier);
+		sup_fw = list_first_entry(&dev->fwnode->suppliers,
+					  struct fwnode_link,
+					  c_hook)->supplier;
+		dev_err_probe(dev, -EPROBE_DEFER, "wait for supplier %pfwP\n",
+			      sup_fw);
 		mutex_unlock(&fwnode_link_lock);
 		return -EPROBE_DEFER;
 	}
@@ -1001,8 +1014,9 @@ int device_links_check_suppliers(struct device *dev)
 		if (link->status != DL_STATE_AVAILABLE &&
 		    !(link->flags & DL_FLAG_SYNC_STATE_ONLY)) {
 			device_links_missing_supplier(dev);
-			dev_dbg(dev, "probe deferral - supplier %s not ready\n",
-				dev_name(link->supplier));
+			dev_err_probe(dev, -EPROBE_DEFER,
+				      "supplier %s not ready\n",
+				      dev_name(link->supplier));
 			ret = -EPROBE_DEFER;
 			break;
 		}
@@ -1884,9 +1898,7 @@ static void __fw_devlink_link_to_consumers(struct device *dev)
 		if (!own_link || ret == -EAGAIN)
 			continue;
 
-		list_del(&link->s_hook);
-		list_del(&link->c_hook);
-		kfree(link);
+		__fwnode_link_del(link);
 	}
 }
 
@@ -1938,9 +1950,7 @@ static void __fw_devlink_link_to_suppliers(struct device *dev,
 		if (!own_link || ret == -EAGAIN)
 			continue;
 
-		list_del(&link->s_hook);
-		list_del(&link->c_hook);
-		kfree(link);
+		__fwnode_link_del(link);
 
 		/* If no device link was created, nothing more to do. */
 		if (ret)
