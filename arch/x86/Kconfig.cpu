@@ -329,6 +329,9 @@ choice
 	config OPTIMIZE_FOR_11300H
 		bool "Intel Core i5-11300H (Tigerlake)"
 
+	config OPTIMIZE_FOR_7700HQ
+		bool "Intel Core i7-7700HQ (Skylake)"
+
 endchoice
 
 #
