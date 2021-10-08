@@ -320,20 +320,14 @@ config OPTIMIZE_SPECIFICALLY
 
 choice
 	prompt "Specify CPU"
-	default OPTIMIZE_FOR_8550U
+	default OPTIMIZE_FOR_11300H
 	depends on OPTIMIZE_SPECIFICALLY
 	help
 	  Specify CPU for CONFIG_OPTIMIZE_SPECIFICALLY.
 	  Invalid, unsupported CPU will break the build.
 
-	config OPTIMIZE_FOR_8550U
-		bool "Intel Core i7-8550U (Kabylake-R)"
-
-	config OPTIMIZE_FOR_4170
-		bool "Intel Core i3-4170 (Haswell)"
-
-	config OPTIMIZE_FOR_R5_2600
-		bool "AMD Ryzen 5 2600 (Pinnacle Ridge)"
+	config OPTIMIZE_FOR_11300H
+		bool "Intel Core i5-11300H (Tigerlake)"
 
 endchoice
 
